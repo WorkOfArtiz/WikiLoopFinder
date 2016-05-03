@@ -3,9 +3,19 @@ import re
 import time
 import os
 import sys
+import bz2
 from collections import defaultdict
 from codecs import open
 from bs4 import BeautifulSoup
+"""
+A weird python script that tries to a walk a semi-random path
+-
+Made for entertainment purposes
+
+In advance, wikipedia, I'm sowwy
+I've added caching and restricted requests per timeframe, but I will be more or
+less DDOSsing.
+"""
 
 # data structure for keeping track of where we went
 visited = defaultdict(bool)
@@ -14,22 +24,28 @@ visited = defaultdict(bool)
 if not os.path.exists('data'):
     os.makedirs('data')
 
-illegal_filechars = re.compile(r'[\s#%&{}()\\<>*@:"\'$!]')
+# I want to store article names as files, so removing illegal characters is a must
+illegal_filechars = re.compile(r'[\s#%&{}()\\/<>*@:"\'$!]')
 def get_html(title):
-    local_path = "data/%s.html" % illegal_filechars.sub('', title)
-
+    local_path = "data/%s.html.bz2" % illegal_filechars.sub('', title)
     # if cached
     if os.path.exists(local_path):
-        with open(local_path) as f:
+        with bz2.BZ2File(local_path, 'r') as f:
             return f.read()
+        # with open(local_path) as f:
+        #     return f.read()
     else:
         try:
             html = wikipedia.page(title).html()
         except wikipedia.exceptions.DisambiguationError as e:
-            html = wikipedia.page(e.options[0]).html()
-
-        with open(local_path, 'w+', 'utf-8') as f:
-            f.write(html)
+            try:
+                html = wikipedia.page(e.options[0]).html()
+            except:
+                raise
+        with bz2.BZ2File(local_path, 'w') as f:
+            f.write(html.encode('utf8'))
+        # with open(local_path, 'w+', 'utf-8') as f:
+        #     f.write(html)
     return html
 
 # wiki pages have info boxes, spam etc.
@@ -47,6 +63,7 @@ def filter_anchors(anchors):
             if any(jump['href'].startswith(junk) for junk in ['#', 'File:']) \
                 or not title \
                 or title.startswith("Special:") \
+                or title.startswith("Edit section:") \
                 or title.endswith("(page does not exist)"):
                 continue
         except:
@@ -71,21 +88,19 @@ if __name__ == '__main__':
     titles = ['Deterministic context-free language']
 
     while titles:
-        title = titles.pop()
+        title = titles.pop().strip()
+
         try:
             print(title)
-            titles = get_title_of_first_link_of_page(title) + titles
+            titles.extend(get_title_of_first_link_of_page(title)[::-1])
             if len(titles) > 100:
-                titles = titles[:100]
+                titles = titles[-100:]
         except KeyboardInterrupt as e:
             print("You wanted me stopped, father :(\ny u do tis 2 me")
             exit(0)
         except Exception as e:
-            print(e.message)
-
-        print("stats:")
-        print("size visited map: %d" % sys.getsizeof(visited))
-        print("size titles list: %d" % sys.getsizeof(titles))
+            print('fuck, article recovery failed me :/')
+            #traceback.print_exc()
         time.sleep(1)
 
     print("No titles left to follow :/")
